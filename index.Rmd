@@ -1,0 +1,262 @@
+---
+title: "Final Project"
+author: "Ari List"
+date: "May 8, 2018"
+output: html_document
+---
+
+I'm going to be honest, I'm a Nintendo hater. I've played their games all my life, but I really feel like most of their stuff is overrated. Their first few games are pretty good, but then they just keep making sequels of the same game without changing much. For this project, I have found a list of video games sales from 2004 - 2010 and will analyse the best type of games. Using this data, I'd like to look at what factors make games better and what we can learn from this. I want to find out if Nintendo actually does deserve the hype they get, or if it seems like people like their product for other reasons. I Afterwards, since that doesn't sound too hard, I would like to predict what type of game will do better and be higher rated in the future.
+
+Motivation for this project came from myself, but also from this article: http://money.cnn.com/2013/05/07/technology/nintendo-problem/index.html 
+This showed me that Nintendo has been doing worse for some time, and I'm wondering if I can figure out some of the reasons.
+
+For the first part of this project, I'm hypothesising that Nintendo products (anything coming from the Wii or DS) are overrated. How do we determine that? It's kind of hard. One thing we can look at are the reviews of games on the consoles. If the reviews are mostly bad, or the consoles themselves have mostly bad games and only a few good ones, I would count that as considering them overrated. While there are definitely other factors to look into, this is all I'll be doing for the project.
+
+Here is the data itself. I'm only going to extrapolate the attributes I find to be important for the sake of this project.
+```{r}
+library(rvest)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+
+csv <- "Managerial_and_Decision_Economics_2013_Video_Games_Dataset.csv"
+read_file <- read_csv(csv)
+table <- read_file %>%
+  select(Console,
+         Title,
+         "US Sales (millions)",
+         YearReleased,
+         Publisher,
+         Genre,
+         Sequel,
+         Usedprice,
+         "Review Score", 
+         Handheld)
+names(table)[3] <- "US_Sales"
+names(table)[9] <- "ReviewScore"
+table
+```
+Let's take a look at how many games each console sold
+```{r}
+games_sold <- table %>%
+  group_by(Console) %>%
+  summarise(sales = sum(US_Sales))
+games_sold
+```
+Seems simple enough. Nintendo does really well with their systems both selling really well. We should look into whether or not they deserve it. Something that catches the eye is that the PSP did really badly. A lot of people said the PSP was actually a failure. This article does a good job of explaining what went wrong: https://www.gamesradar.com/why-psp-is-failing-us/ for now though, it's enough to know that it just did badly.
+
+One way we can determine why games sold so well is by looking at how many games had good review. We do this by calculating the raw numbers, then dividing by the amount of games it has on the system as a whole. This ensures that a system can't just pump out tons and tons of games and hope some of them are good. We want to see which system comes out with consistently good games. I am considering a good review to be 90+.
+```{r}
+total_amount <- table %>%
+  group_by(Console) %>%
+  summarise(TotalAmount = n())  
+total_amount$TotalAmount <- as.double(total_amount$TotalAmount)
+total_amount
+
+above_90 <- table %>%
+  group_by(Console) %>%
+  filter(ReviewScore >= 90) %>%
+  summarise(Amount = n()) %>%
+  ggplot(mapping = aes(x=Console, y=Amount/total_amount$TotalAmount, fill = Console)) +
+  geom_bar(stat="identity") +
+  labs(title = "Games that got above 90 per console")
+above_90
+```
+Looking at the chart, things seem a bit different. In terms of what hasn't changed, the Xbox 360 still seems to do very well, while the two handheld systems seemed to not haave so many good games. At the same time, it seems like the DS is outperforming the Sony handheld counterpart, the PSP. So points for Nintendo there. Something new we learned is that the Nintendo Wii actually doesn't have a high amount of good games compared to the rest of their catalog. This seems to imply that the Wii really just has a few really high scoring games, and the others are at least not great. Therefore, it seems like the Wii games are not very consistent. But how inconsistent are they?
+
+While it's nice to see which consoles present large amounts of good games, its better to look at an average of what scores each console gets in general. This does a good job of showing us how consistent each console's games are. Therefore we can try and look at the normal distribution of each console's reviews.
+```{r}
+lapply(c("Nintendo DS", "Nintendo Wii", "PlayStation 3", "Sony PSP","X360"),
+  function(col) {
+    mean_score <- table %>%
+      filter(Console == col) %>%
+      summarise(mean_review = mean(ReviewScore))
+    title <- paste(c(col,"with mean score of", mean_score), collapse = " ")
+    table %>%
+      filter(Console == col) %>%
+      ggplot(aes(x=ReviewScore)) +
+      geom_histogram(bins=100) +
+      ggtitle(title) +
+      geom_vline(aes(xintercept=mean(ReviewScore)), color="red")
+  })
+```
+In this dataset we see the spread off all the reviews each console got. They all have a similar range because of outliers meaning some reviews are really good while some are really bad. An interesting thing to look at is the mean of each graph, represented by the red line down the middle. Because this isn't the largest dataset in the world, the Law of Large numbers doesn't really apply here, but we can still see a normal distribution forming for all the graphs. 
+
+It seems like the means themselves are sort of close, but lets check the medians in case of outliers.
+```{r}
+median_table <- 
+  table %>%
+  group_by(Console) %>%
+  summarise(median_score = median(ReviewScore)) %>%
+  ggplot(aes(x=Console, y=median_score)) +
+  geom_text(aes(label=median_score)) +
+  geom_point() + 
+  ggtitle("Median scores")
+median_table <- median_table + expand_limits(x = 0, y = 0)
+median_table
+```
+Looking at this chart, it seems like the Nintendo products are not that far behind. While it's true that both the DS and the Wii have the lowest scores, there is not necessarily a statistically significant difference. Let's try and look at a Kruskal Wallis test to see if there is a statistically significant difference between medians. Here is an article doing a better job of explaining the Kruskal Wallis test: https://en.wikipedia.org/wiki/Kruskal%E2%80%93Wallis_one-way_analysis_of_variance
+```{r}
+kruskal.test(Console ~ ReviewScore, data=table)
+```
+The Kruskal-Wallis test is a good way to look at the median of multiple groups. Interpretting results of the test, the P-value is greater than 0.05. Because of this, we would actually reject the null hypothesis, and say that there is a statistical significance between the medians of groups when it comes to review scores. This means that the fact that Nintendo products have a lower score actually does make some form of statiscal significance. It seems here that Nintendo has the lowest median scores, which means they come out with a lot of bad games. While I would already take this to say that both the DS and Wii were worse systems, there are still factors we need to look at.
+
+First of all, it would be interesting to see if high reviews directly correlate to higher sales. This would imply that if games got high sales without good reviews, then reviews really don't affect sales which would be pretty sad.
+```{r}
+reviews_vs_sales <- table %>%
+  ggplot(aes(x=ReviewScore, y=US_Sales, color=Console)) +
+  geom_point() + 
+  ggtitle("Units sold versus reviews")
+reviews_vs_sales
+```
+Just looking at this graph, we can see a ton of outliers, and almost every single one of them is from Nintendo (either the Wii or DS). Unfortunately, it doesn't really look like there will be much of a linear regression. Let's try and take a look at the graph without any Nintendo products.
+```{r}
+table_wthout_nintendo <- table %>%
+  filter(Console != "Nintendo DS" & Console != "Nintendo Wii")
+
+reviews_vs_sales_wthout_nintendo <- table_wthout_nintendo %>%
+  ggplot(aes(x=ReviewScore, y=US_Sales)) +
+  geom_point() +
+  geom_smooth(method= lm) +
+  ggtitle("Units sold versus reviews without Nintendo")
+reviews_vs_sales_wthout_nintendo
+```
+We can see here that there are still outliers, but they are way less bad than when Nintendo was involved. Their sales are less high, and the better selling games generally also got good reviews. Let's take a look at an actually linear regression. We want to compare the tables with and without the Nintendo products, and see how they fair.
+```{r}
+library(broom)
+significane <- lm(ReviewScore~US_Sales, data=table)
+all_games_stats <- significane %>%
+  tidy() %>%
+  select(-statistic)
+all_games_stats
+```
+
+```{r}
+no_nintendo <- lm(ReviewScore~US_Sales, data=table_wthout_nintendo)
+no_nintendo_stats <- no_nintendo %>%
+  tidy() %>%
+  select(-statistic)
+no_nintendo_stats
+```
+Both of the tables look pretty similar. The first one seems to say that a game that gets no sales would have a review of ~66, and that each point it goes up would cause the sales to increase by ~4. On the other hand, the second table says the same estimate for what review it would have without any sales, but that each game would go up by over 8, more than twice the other table, for each extra review point it has. On the other hand this data seems kind of shaky. It's possible that instead of using a linear regression, a tree could do a better job of predicting this data.
+```{r}
+library(tree)
+tree <- tree(ReviewScore~US_Sales, data=table)
+plot(tree)
+text(tree, pretty=0, cex=1.3)
+title("With Nintendo")
+```
+
+```{r}
+library(tree)
+tree <- tree(ReviewScore~US_Sales, data=table_wthout_nintendo)
+plot(tree)
+text(tree, pretty=0, cex=1.3)
+title("Without Nintnedo")
+```
+Now this seems like a much more accurate plot. This partitions the sales predictor into regions based on its value. The second tree shows the first half of the tree being the same, but the latter half of the tree is where it gets interesting. Games have to have a higher review score for the sales to go up. That means that the review has to be higher for it to actually get higher sales. This means they correlate more than the previous tree as a lower review was used to get higher sales.
+
+Now we have a few problems. If it doesn't seem like sales go up for better reviews, what is one factor that could increase sales? I would hypothesise that its affected by a game being a sequel vs original. I will experiment on whether or not a game is a sequel. The hypothesis I will come up with is that a game being a sequel does make a difference. Since this is a good option to use A/B testing, I will be doing that. Let's look at a table to get some data.
+```{r}
+easyTable <- table %>% as.data.frame()
+n <- nrow(easyTable)
+sequels <- sum(easyTable$Sequel)
+mean <- sequels / n
+variance <- var(easyTable$Sequel)
+important_info <- matrix(c(n,sequels,mean,variance),ncol=4,byrow=TRUE)
+colnames(important_info) <- c("All_games","Sequels","Mean","Variance")
+important_info
+```
+We can now approximate the the distribution of X bar using pnorm
+```{r}
+distr <- 1 - pnorm(0.6,mean,sqrt(variance))
+distr
+```
+
+Since this p-norm is above 0.05, we reject the null hypothesis. Now let's look at how it affects sales.
+```{r}
+mean_non_sequel <- easyTable %>%
+  filter(Sequel == 0) %>%
+  summarise(avg_sales = sum(US_Sales))
+
+mean_sequel <- easyTable %>%
+  filter(Sequel == 1 | Sequel == 2) %>%
+  summarise(avg_sales = sum(US_Sales))
+
+sales_table <- matrix(c(mean_sequel, mean_non_sequel), ncol = 2, byrow = TRUE)
+colnames(sales_table) <- c("Sequel_Sales", "Non_Sequel_Sales")
+sales_table
+```
+Holy cow, looks like I was at least partially correct. The games that are sequels in general do twice as well as games that aren't sequels. This is not neccesarilly the cause, but it is an interesting correlation to note. Let's see how all the consoles are affected by this individually. It would be interesting if Nintendo was affected the most.
+```{r}
+sequel_table <- table %>%
+  mutate(sequel_sales = ifelse(Sequel == 1 | Sequel == 2, US_Sales, 0)) %>%
+  mutate(origional_sales = ifelse(Sequel == 0, US_Sales, 0))
+sequels_table_matrix <- sequel_table %>%
+  group_by(Console) %>%
+  filter(Sequel <= 1) %>%
+  summarise(is_sequel = sum(sequel_sales), is_origional = sum(origional_sales))
+sequel_table_fame <- data.frame(
+  sales = factor(c(sequels_table_matrix$is_sequel, sequels_table_matrix$is_origional)),
+  console = factor(sequels_table_matrix$Console),
+  Developed_as = factor(c(
+    c("Sequel","Sequel","Sequel","Sequel","Sequel"), 
+    c("Origional","Origional","Origional","Origional","Origional"))))
+sequel_plot <- sequel_table_fame %>%
+  ggplot(aes(x=console, y=sales, fill=Developed_as)) +
+  geom_bar(stat="identity", position = position_dodge())
+sequel_plot
+```
+Seems like this was a good guess, but incorrect in the end. While it's true that Nintendo products did substantially better when they were sequels, all the other consoles did the exact same thing as well. This pretty much tells me that it is normal for sequels to sell better than originals, so even if Nintendo products have a ton of sequels, they are alright in this category because everyone else does as well.
+
+Now that we have done our hypothesis testing on sequels being a factor lets look into something else. Another thing we might care about is third party support. Do game consoles mostly make their own games, or are they getting a lot from third parties? This is important because we know that all consoles will be doing both, but it's really important to allow third party developers to make good games on your console, not just allow your own company to make good games. Since Nintendo has been accused in the past of doing a lowsy job with third party support, I figured I'd look into it. Here is an article detailing the problems Nintendo generally has with third party support: http://switchaboo.com/2017/12/14/nintendos-love-hate-love-relationship-with-third-party-developers-a-historical-perspective/ 
+```{r}
+table$Publisher <- gsub(" .*", "", table$Publisher)
+new_table <- table %>%
+  mutate(first_party = ifelse(Publisher == "Nintendo"  & (Console == "Nintendo DS" | Console == "Nintendo Wii")
+                              | Publisher == "Sony" & (Console == "Sony PSP" | Console == "PlayStation 3")
+                              | Publisher == "Microsoft" & Console == "X360",
+                              1, 0)) %>%
+  mutate(third_party = ifelse(Publisher == "Nintendo"  & (Console == "Nintendo DS" | Console == "Nintendo Wii")
+                              | Publisher == "Sony" & (Console == "Sony PSP" | Console == "PlayStation 3")
+                              | Publisher == "Microsoft" & Console == "X360",
+                              0, 1)) %>%
+   mutate(developer = ifelse(Publisher == "Nintendo"  & (Console == "Nintendo DS" | Console == "Nintendo Wii")
+                              | Publisher == "Sony" & (Console == "Sony PSP" | Console == "PlayStation 3")
+                              | Publisher == "Microsoft" & Console == "X360",
+                              "First Party", "Third Party"))
+party_table_matrix <- new_table %>%
+  group_by(Console) %>%
+  summarise(first_party = sum(first_party), third_party = sum(third_party))
+party_table_matrix
+party_table_frame <- data.frame(
+    developers = factor(c(party_table_matrix$first_party, party_table_matrix$third_party)),
+    console = factor(c(party_table_matrix$Console)),
+    Developed_by = factor(c(
+      c("First Party", "First Party", "First Party", "First Party", "First Party"),
+      c("Third Party", "Third Party", "Third Party", "Third Party", "Third Party")
+    ))
+)
+party_plot <- party_table_frame %>%
+  ggplot(aes(x=console, y=developers, fill=Developed_by)) +
+  geom_bar(stat="identity", position = position_dodge())
+party_plot
+```
+Looking at this chart, the Nintendo DS has the most first party developers, but that's about all we got. The Wii doesn't even have the most for the non-handheld consoles, and even if it did, it would only be by a small margin. The last thing we can look at is if third party developer games are any good. This is easy, I'll just look at the spread of reviews for all games and see which ones or third versus first party.
+```{r}
+lapply(c("Nintendo DS", "Nintendo Wii", "PlayStation 3", "Sony PSP","X360"),
+  function(col) {
+    title <- paste(c(col), collapse = " ")
+    spread_plot <- new_table %>%
+      filter(Console == col) %>%
+      ggplot(aes(y=US_Sales, x=ReviewScore, color=developer)) +
+      geom_point() +
+      ggtitle(title)
+  })
+```
+Looks like this actually is correct. Both the Nintendo consoles did pretty poorly with just about all third party developed games, while the first party developed games seem to carry the systems as a whole. Looking at the other systems, they too have great games that come from the first party, but at the end of the day they also have great games that are third party developed while Nintendo just doesn't.
+
+
+ ## Conclusion ##
+In conclusion, I didn't actually do a very good job of proving that Nintnedo sucks. There are defintily problems that it seems to have more than others. Both the Wii and DS did not have that many games which got great reviews, but neither did the PSP so it's possible the DS can be let off for this one. At the same time, the Nintnedo products seemed to have a lot of outliers when it came to sales, and with them more than all other consoles, higher reviews did not really correlate with higher sales. Using regression trees, I figured out that Nintendo consoles had a lot of outliers in terms of game sales, but it was really only a small percentage. So while they are at fault for this, they aren't horrible. We also looked into wether or not sequels affected the sales of games with Nintendo. The answer was a strong yes. The only issue is that it was a strong yes for all the consoles, so it was more of a normal thing than Nintendo doing something wrong. Finally we looked at third party support. This is something I can bash them for. All the consoles seemed to have about the same amount of third party developed games, but at the end of the day the Nintendo third party games were kind of trash. So while Nintendo wasn't proven to be terrible in this project, there is still potential to bash them! Hopefully someone else will come along and look into factors I didn't look into, like taking a closer look at the reviews, and figuring out what is going on with the outliers that happened with the Nintendo games that sold so well. For more informatino on why other people think Nintendo sucks, check out this top ten list: https://www.thetoptens.com/reasons-why-nintendo-sucks/
+ 
